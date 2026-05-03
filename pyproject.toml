@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opsgpt-disk-prediction-poc"
+version = "0.1.0"
+description = "OpsGPT POC: predictive disk-fill detection + LLM-driven remediation across 3000 servers"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [{name = "Naga (TCS)"}]
+requires-python = ">=3.10"
+
+dependencies = [
+    # LLM
+    "anthropic>=0.40.0",
+    "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
+    "langchain-anthropic>=0.2.0",
+
+    # ML
+    "prophet>=1.1.5",
+    "xgboost>=2.0.0",
+    "scikit-learn>=1.4.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+
+    # Embeddings + RAG
+    "sentence-transformers>=2.7.0",
+    "pgvector>=0.3.0",
+
+    # Data + storage
+    "psycopg[binary,pool]>=3.1",
+    "redis>=5.0",
+    "sqlalchemy>=2.0",
+
+    # Scheduling
+    "apscheduler>=3.10",
+
+    # UI
+    "streamlit>=1.31",
+    "plotly>=5.18",
+    "altair>=5.2",
+
+    # Config + utilities
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    "rich>=13.7",
+    "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.3",
+]
+
+[project.scripts]
+opsgpt-generate-data = "data.synthetic_generator:main"
+opsgpt-ingest = "services.ingestion.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shared*", "services*", "data*", "ui*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
