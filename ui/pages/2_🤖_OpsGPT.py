@@ -1,12 +1,12 @@
 """OpsGPT chatbot — conversational approval interface for human-in-the-loop
-reviews. (Implements the AgentAsk component from Zone 3 of the architecture
-diagram; user-facing brand is OpsGPT.)
+reviews on medium-confidence agent decisions.
 
-When the Decision Engine routes to `agentask` (confidence 0.75–0.85), the
-operator opens this page, picks a pending recommendation, chats with OpsGPT
-about it (asking follow-up questions about the host's history, the runbook
-context, or the proposed action), and finally clicks Approve or Deny.
-Approve triggers the actual remediation; Deny records a no-action verdict.
+When the Decision Engine routes to `opsgpt_chat` (confidence 0.75–0.85),
+the operator opens this page, picks a pending recommendation, chats with
+OpsGPT about it (asking follow-up questions about the host's history, the
+runbook context, or the proposed action), and finally clicks Approve or
+Deny. Approve triggers the actual remediation (or files a ticket for
+escalations); Deny records a no-action verdict.
 """
 
 from __future__ import annotations
@@ -46,15 +46,15 @@ st.caption(
 # ---------------------------------------------------------------------------
 # Find pending recommendations (the ones we haven't acted on yet)
 # ---------------------------------------------------------------------------
-def _pending_agentask_runs() -> pd.DataFrame:
-    """An agent_run is 'pending' if decision='agentask' and there is no
+def _pending_opsgpt_chat_runs() -> pd.DataFrame:
+    """An agent_run is 'pending' if decision='opsgpt_chat' and there is no
     follow-up run for the same host that resolved it. We use a simple
     convention: a follow-up run with verdict in {'cleaned', 'no_action_needed'}
-    after the agentask run resolves it."""
+    after the opsgpt_chat run resolves it."""
     runs = fetch_agent_runs(limit=200)
     if runs.empty:
         return runs
-    pending = runs[runs["decision"] == "agentask"].copy()
+    pending = runs[runs["decision"] == "opsgpt_chat"].copy()
     if pending.empty:
         return pending
     # Strip already-resolved (any newer run for same host with cleaned/no_action)
@@ -65,7 +65,7 @@ def _pending_agentask_runs() -> pd.DataFrame:
     return pending
 
 
-pending = _pending_agentask_runs()
+pending = _pending_opsgpt_chat_runs()
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +75,7 @@ if pending.empty:
     st.info(
         "No pending OpsGPT approvals right now. The chatbot is invoked when "
         "the Decision Engine's confidence lands between "
-        f"{settings.decision_agentask_threshold:.2f} and "
+        f"{settings.decision_opsgpt_chat_threshold:.2f} and "
         f"{settings.decision_auto_remediate_threshold:.2f}. "
         "Run the agent on a host with mixed signals to create one."
     )
@@ -111,7 +111,7 @@ st.info(run["llm_reasoning"] or "(no reasoning recorded)")
 st.markdown("---")
 st.subheader("Ask follow-up questions")
 
-chat_key = f"agentask_chat_{run['run_id']}"
+chat_key = f"opsgpt_chat_{run['run_id']}"
 if chat_key not in st.session_state:
     st.session_state[chat_key] = []
 

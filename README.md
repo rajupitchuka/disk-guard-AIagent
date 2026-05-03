@@ -22,7 +22,7 @@ governance-gated auto-remediation. Built for the InnoVista 2026 demo.
                          ┌────────── Zone 3 — Governance ────────────────┐
                          │ Decision Engine → confidence score             │
                          │   > 0.85 → Remediation (PowerShell / SSH)      │
-                         │   0.75–0.85 → AgentAsk chatbot (approval)      │
+                         │   0.75–0.85 → OpsGPT chatbot (approval)        │
                          │   < 0.75 → ServiceNow ticket only              │
                          └────────────────────────────────────────────────┘
                          ┌────────── Zone 4 — Infra ─────────────────────┐
@@ -58,7 +58,7 @@ Four pages:
 |---|---|
 | 🛰️ **Fleet Overview** (`home.py`) | Fleet metrics, anomaly-vs-forecast scatter, demo container cards, full sortable host table |
 | 🖥️ **Host Detail** (`pages/1_🖥️_Host_Detail.py`) | Time-series chart, latest ML prediction, three demo buttons (Fill Disk / Run ML / Run LLM Reasoning), agent reasoning panel |
-| 🤖 **OpsGPT** (`pages/2_🤖_OpsGPT.py`) | Chatbot interface for medium-confidence approvals (AgentAsk role from the architecture diagram, branded as OpsGPT) — talk to the agent about its recommendation, then Approve (triggers remediation) or Deny |
+| 🤖 **OpsGPT** (`pages/2_🤖_OpsGPT.py`) | Chatbot interface for medium-confidence approvals — talk to the agent about its recommendation, then Approve (triggers remediation or files a ticket depending on the original LLM recommendation) or Deny |
 | 📋 **Audit Trail** (`pages/3_📋_Audit_Trail.py`) | Every agent run with full LLM reasoning, tool calls, decision rationale, RAG document IDs |
 | 📨 **Tickets** (`pages/4_📨_Tickets.py`) | ServiceNow mock — every auto-created ticket, filterable by status/severity/host, status lifecycle inline |
 
@@ -195,7 +195,7 @@ opsgpt-disk-prediction-poc/
 │   ├── home.py                    # Fleet Overview (entry)
 │   ├── pages/
 │   │   ├── 1_🖥️_Host_Detail.py
-│   │   ├── 2_🤖_OpsGPT.py        # AgentAsk role, branded as OpsGPT chat
+│   │   ├── 2_🤖_OpsGPT.py        # OpsGPT chatbot for human-in-the-loop approvals
 │   │   ├── 3_📋_Audit_Trail.py
 │   │   └── 4_📨_Tickets.py
 │   └── lib/                       # cached data layer + actions + styles
@@ -216,7 +216,7 @@ Notable knobs:
   for richer reasoning at higher cost.
 - `ML_TRIGGER_FILL_PCT=90` and `ML_TRIGGER_HORIZON_DAYS=7` — match the
   diagram's "ML predicts >90% fill in 7 days" trigger.
-- `DECISION_AUTO_REMEDIATE_THRESHOLD=0.85` and `DECISION_AGENTASK_THRESHOLD=0.75` —
+- `DECISION_AUTO_REMEDIATE_THRESHOLD=0.85` and `DECISION_OPSGPT_CHAT_THRESHOLD=0.75` —
   confidence-score gates exactly as drawn.
 
 ## License

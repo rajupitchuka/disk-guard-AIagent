@@ -258,7 +258,7 @@ if reasoning_done:
     rc1.metric("LLM recommendation", rec)
     rc2.metric("LLM self-confidence", f"{self_conf:.2f}")
     rc3.metric("Decision route", decision.decision if decision else "—",
-               help="From the Decision Engine — auto_remediate / agentask / ticket_only")
+               help="From the Decision Engine — auto_remediate / opsgpt_chat / ticket_only")
     rc4.metric("Confidence score", f"{decision.confidence_score:.3f}" if decision else "—")
 
     st.markdown(
@@ -320,7 +320,7 @@ if resolved_done:
     if files:
         st.success(f"🧹 Cleaned {files} files · {gb_freed:.2f} GB freed")
         st.page_link("pages/3_📋_Audit_Trail.py", label="📋 View this run in the Audit Trail →")
-    elif decision == "agentask":
+    elif decision == "opsgpt_chat":
         st.warning(
             "📨 Routed to OpsGPT chat — pending operator approval. Open the "
             "chatbot, ask follow-up questions if you want, then approve or deny."

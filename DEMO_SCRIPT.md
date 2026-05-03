@@ -148,11 +148,11 @@ Walk through the same 4-stage flow:
 
 **Switch to** 🤖 **OpsGPT** page.
 
-If there's a pending agentask run: walk through it. Ask a follow-up
+If there's a pending OpsGPT chat run: walk through it. Ask a follow-up
 question in the chatbot ("why P2 not P3?") and watch Claude answer
 grounded in the run's context. Click Approve or Deny.
 
-If there are no pending agentask runs (common after a reset): explain
+If there are no pending OpsGPT chat runs (common after a reset): explain
 verbally — *"In production, ~15% of decisions land in this band. The
 operator chats with the agent about the recommendation, then approves or
 denies with one click."*

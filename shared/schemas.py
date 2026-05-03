@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 OS = Literal["windows", "linux"]
 Environment = Literal["prod", "staging", "dev"]
-Decision = Literal["auto_remediate", "agentask", "ticket_only"]
+Decision = Literal["auto_remediate", "opsgpt_chat", "ticket_only"]
 Verdict = Literal["cleaned", "no_action_needed", "escalated_anomaly"]
 TicketStatus = Literal["new", "assigned", "in_progress", "resolved", "closed"]
 Severity = Literal["P1", "P2", "P3", "P4"]

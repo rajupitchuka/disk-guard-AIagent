@@ -34,7 +34,7 @@ def test_strong_clean_signal_auto_remediates_in_dev() -> None:
     assert r.confidence_score >= 0.85
 
 
-def test_anomaly_recommendation_at_least_agentask() -> None:
+def test_anomaly_recommendation_at_least_opsgpt_chat() -> None:
     """escalate_anomaly should never route to ticket_only."""
     d = _make(
         llm_recommendation="escalate_anomaly",
@@ -42,7 +42,7 @@ def test_anomaly_recommendation_at_least_agentask() -> None:
         anomaly_score=0.997,
     )
     r = score_and_route(d)
-    assert r.decision in ("agentask", "auto_remediate")
+    assert r.decision in ("opsgpt_chat", "auto_remediate")
 
 
 def test_clean_with_high_anomaly_is_overridden() -> None:
@@ -82,7 +82,7 @@ def test_no_action_with_quiet_signals_is_high_confidence() -> None:
         forecast_7d_pct=22.0,
     )
     r = score_and_route(d)
-    assert r.decision in ("auto_remediate", "agentask")  # high confidence
+    assert r.decision in ("auto_remediate", "opsgpt_chat")  # high confidence
 
 
 def test_rag_grounding_helps() -> None:

@@ -67,7 +67,7 @@ class Settings(BaseSettings):
 
     # --- Decision Engine confidence thresholds ---
     decision_auto_remediate_threshold: float = 0.85
-    decision_agentask_threshold: float = 0.75
+    decision_opsgpt_chat_threshold: float = 0.75
 
     # --- Embeddings ---
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"

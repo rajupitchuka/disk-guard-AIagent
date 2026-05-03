@@ -26,4 +26,5 @@ def test_decision_thresholds_match_diagram() -> None:
     s = Settings(_env_file=None)
     # > 0.85 → auto remediate, > 0.75 → OpsGPT chat, < 0.75 → ticket only
     assert s.decision_auto_remediate_threshold == 0.85
-    assert s.decision_agentask_threshold == 0.75
+    assert s.decision_opsgpt_chat_threshold == 0.75
+

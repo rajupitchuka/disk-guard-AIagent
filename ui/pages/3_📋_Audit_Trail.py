@@ -71,7 +71,7 @@ if host_filter:
 m1, m2, m3, m4, m5 = st.columns(5)
 m1.metric("Total runs", len(filtered))
 m2.metric("Auto-remediated", int((filtered["decision"] == "auto_remediate").sum()))
-m3.metric("OpsGPT chat (pending)", int((filtered["decision"] == "agentask").sum()))
+m3.metric("OpsGPT chat (pending)", int((filtered["decision"] == "opsgpt_chat").sum()))
 m4.metric("Tickets created",
           int(filtered["servicenow_ticket_id"].fillna("").astype(bool).sum())
           if "servicenow_ticket_id" in filtered.columns else 0)

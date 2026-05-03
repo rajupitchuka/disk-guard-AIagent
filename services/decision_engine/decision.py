@@ -3,7 +3,7 @@
 Combines ML confidence + LLM recommendation + rule signals into a single
 0–1 confidence score, then routes:
   >= 0.85  → auto_remediate     (Remediation Engine runs the playbook)
-  >= 0.75  → agentask           (chatbot asks for human approval)
+  >= 0.75  → opsgpt_chat        (OpsGPT chatbot asks for human approval)
   <  0.75  → ticket_only        (ServiceNow ticket only, no automated action)
 
 Thresholds match the diagram. The score formula is intentionally simple
@@ -19,7 +19,7 @@ from typing import Literal
 from shared.config import settings
 
 LLMRecommendation = Literal["clean", "escalate_anomaly", "no_action"]
-RouteDecision = Literal["auto_remediate", "agentask", "ticket_only"]
+RouteDecision = Literal["auto_remediate", "opsgpt_chat", "ticket_only"]
 
 
 @dataclass
@@ -95,19 +95,19 @@ def score_and_route(d: DecisionInput) -> DecisionResult:
             "OVERRIDE: anomaly_score > 0.6 with 'clean' recommendation — "
             "growth is not normal; escalating instead of cleaning"
         )
-        score = min(score, settings.decision_agentask_threshold - 0.01)
+        score = min(score, settings.decision_opsgpt_chat_threshold - 0.01)
 
     # --- Hard rule: escalate_anomaly always at least OpsGPT chat ------
     if d.llm_recommendation == "escalate_anomaly":
-        score = max(score, settings.decision_agentask_threshold)
+        score = max(score, settings.decision_opsgpt_chat_threshold)
         rationale.append("escalate_anomaly → minimum OpsGPT chatbot routing")
 
     score = max(0.0, min(1.0, score))
 
     if score >= settings.decision_auto_remediate_threshold:
         decision: RouteDecision = "auto_remediate"
-    elif score >= settings.decision_agentask_threshold:
-        decision = "agentask"
+    elif score >= settings.decision_opsgpt_chat_threshold:
+        decision = "opsgpt_chat"
     else:
         decision = "ticket_only"
 

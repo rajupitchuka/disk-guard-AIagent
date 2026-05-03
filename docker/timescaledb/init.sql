@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     prediction_id        TEXT REFERENCES ml_predictions(prediction_id),
     -- Decision Engine output
     confidence_score     DOUBLE PRECISION,
-    decision             TEXT,                  -- 'auto_remediate' | 'agentask' | 'ticket_only'
+    decision             TEXT,                  -- 'auto_remediate' | 'opsgpt_chat' | 'ticket_only'
     -- Outcome
     verdict              TEXT,                  -- 'cleaned' | 'no_action_needed' | 'escalated_anomaly'
     bytes_freed          BIGINT DEFAULT 0,

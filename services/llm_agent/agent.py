@@ -10,10 +10,10 @@ State machine:
   - reason:         calls Claude with the sanitized context, expects
                     structured JSON {recommendation, self_confidence, rationale}.
   - decide:         hands the result to the Decision Engine which produces
-                    a confidence score and a route (auto_remediate / agentask /
+                    a confidence score and a route (auto_remediate / opsgpt_chat /
                     ticket_only).
   - execute_or_skip: branches on the route. auto_remediate runs the
-                    Remediation Engine; agentask + ticket_only just record
+                    Remediation Engine; opsgpt_chat + ticket_only just record
                     intent (Day 4 wires up the chatbot, Day 5 wires up
                     ServiceNow).
   - audit:          persists the full run to TimescaleDB agent_runs.

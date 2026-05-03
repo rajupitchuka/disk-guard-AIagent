@@ -131,8 +131,8 @@ def run_reasoning_only(host_id: str) -> ActionResult:
 
 def run_resolve_action(state: dict) -> ActionResult:
     """Stage 4 of the demo: take a reasoning state and apply the decision.
-    auto_remediate executes the playbook; agentask + ticket_only just write
-    the audit row (and a ServiceNow ticket where appropriate)."""
+    auto_remediate executes the playbook; opsgpt_chat + ticket_only just
+    write the audit row (and a ServiceNow ticket where appropriate)."""
     try:
         final_state = run_resolve(state)
         decision = final_state.get("decision")
@@ -143,7 +143,7 @@ def run_resolve_action(state: dict) -> ActionResult:
             "auto_remediate": (
                 f"Auto-remediated: {files} files deleted, {gb:.2f} GB freed"
             ) if remediation and files else "Auto-remediate route chosen but no remediation executed (LLM did not recommend clean — escalation path).",
-            "agentask": "Pending operator approval — see OpsGPT chat page.",
+            "opsgpt_chat": "Pending operator approval — see OpsGPT chat page.",
             "ticket_only": "Routed to ServiceNow ticket only (confidence below auto-remediate threshold).",
         }.get(decision.decision if decision else "", "(no action)")
         return ActionResult(

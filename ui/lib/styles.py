@@ -20,7 +20,7 @@ STATUS_LABELS = {
 
 DECISION_COLORS = {
     "auto_remediate": "#10b981",
-    "agentask": "#f59e0b",
+    "opsgpt_chat": "#f59e0b",
     "ticket_only": "#3b82f6",
 }
 
