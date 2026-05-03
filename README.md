@@ -1,8 +1,29 @@
 # OpsGPT Disk Prediction POC
 
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/rajupitchuka/disk-guard-AIagent?quickstart=1)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
+[![Whitepaper](https://img.shields.io/badge/whitepaper-PDF/DOCX/MD-orange.svg)](docs/disk-guard-whitepaper.md)
+[![IEEE LaTeX](https://img.shields.io/badge/IEEE-LaTeX_paper-blue.svg)](paper/ieee/)
+
 Implementation of the OpsGPT reference architecture: predictive disk-fill
 detection across ~3000 servers using ML, with LLM-driven reasoning and
 governance-gated auto-remediation. Built for the InnoVista 2026 demo.
+
+## 🚀 Try it in 60 seconds (zero local install)
+
+Click the **"Open in GitHub Codespaces"** badge above. After a one-time
+~5-minute setup (downloading dependencies + Docker images), the
+Streamlit UI auto-launches in your browser. The fleet is already
+seeded with 53 hosts and the trained ML model is in place.
+
+To exercise the LLM reasoning step (Stage 3), add an
+`ANTHROPIC_API_KEY` to `.env` from [console.anthropic.com](https://console.anthropic.com).
+Without the key, Stages 1, 2, and 4 still work for navigation;
+Stage 3 will return a clear error.
+
+To run locally instead of in Codespaces, see the [Quickstart (Mac /
+Apple Silicon)](#quickstart-mac--apple-silicon) section below.
 
 ## Architecture
 
