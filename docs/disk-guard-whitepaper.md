@@ -13,10 +13,10 @@
 
 Disk-fill incidents remain one of the most frequent and disruptive classes
 of production failures across enterprise server fleets. Traditional
-monitoring tools — SCOM, Datadog, Nagios, and similar — detect such
+monitoring tools — SCOM, Datadog [19], Nagios, and similar — detect such
 conditions only when a configured utilization threshold (typically 85% or
 90%) is breached, at which point an alert is generated and an Operations
-engineer is dispatched to investigate. By the time the alert fires, the
+engineer is dispatched to investigate, often via ServiceNow [20]. By the time the alert fires, the
 window for safe intervention is already small, and in cases of anomalous
 fast-fill (caused by misconfigured loggers, runaway processes, or
 deployment regressions), the disk may saturate before the response cycle
@@ -26,11 +26,13 @@ This paper presents **Disk Guard AI Agent**, a working POC implementation
 of a predictive multi-AI agent system that fundamentally inverts this
 model. Rather than waiting for thresholds to breach, Disk Guard
 continuously analyzes telemetry, *forecasts* disk saturation using
-classical time-series methods (Prophet) and an XGBoost anomaly
+classical time-series methods (Prophet) [1] and an XGBoost [2] anomaly
 classifier, and invokes a reasoning agent built on a LangGraph state
-machine and the Anthropic Claude language model. The agent is grounded
-in retrieved runbook content via a pgvector-backed RAG corpus, sanitized
-for PII and credentials, and produces a structured recommendation. A
+machine [15] and the Anthropic Claude [14] large language model. The
+agent is grounded in retrieved runbook content via a pgvector [18]
+backed RAG corpus [5] using sentence-transformers embeddings [3] and
+HNSW similarity search [4], sanitized for PII and credentials, and
+produces a structured recommendation. A
 Decision Engine then combines LLM confidence, ML signal alignment, RAG
 grounding, and environmental risk into a single 0–1 score that routes
 the run into one of three governance bands: auto-remediation,
@@ -52,16 +54,21 @@ detection, retrieval-augmented reasoning, and confidence-gated governance
 together into a system that is robust enough for real IT-Operations
 deployment.
 
-**Keywords:** AIOps, predictive monitoring, agentic AI, retrieval-augmented
-generation, time-series forecasting, anomaly detection, IT operations,
-governance AI
+**Index Terms:** AIOps, predictive monitoring, agentic AI,
+retrieval-augmented generation, time-series forecasting, anomaly
+detection, IT operations, governance AI, large language models, site
+reliability engineering
 
 ---
 
 ## 1. Introduction
 
 Storage exhaustion incidents account for a non-trivial fraction of
-production outages across virtually every enterprise IT estate. A common
+production outages across virtually every enterprise IT estate. The
+broader operational discipline of preventing such failures has been
+formalized as Site Reliability Engineering [12], and the application of
+machine learning to operational failure prediction is the subject of an
+active body of research [9], [10], [11]. A common
 incident pattern is the following: a host's monitored partition (e.g.,
 `/var/log` on a Linux web server, or `C:\Logs` on a Windows IIS server)
 fills steadily over hours or days. At some point the host's free space
@@ -380,7 +387,8 @@ category-tagged placeholder. The reason node serializes the sanitized
 context into a structured prompt and submits it to Claude Haiku 4.5 via
 LangChain Anthropic. The model is instructed to return a strict JSON
 object with four fields: recommendation, self_confidence, rationale,
-and key_evidence. The decide node converts the LLM output into a
+and key_evidence — a structured-output approach inspired by
+chain-of-thought [7] and ReAct [8] prompting patterns. The decide node converts the LLM output into a
 DecisionInput, hands it to the Decision Engine, and stores the
 returned DecisionResult in the agent's state.
 
@@ -850,17 +858,18 @@ trained model while wiping runtime artifacts.
 ### 8.1 Comparison with related work
 
 Predictive disk monitoring is not itself a new idea — capacity-planning
-tools have offered linear extrapolation for decades. What is novel
-about the present work is the *integration* of (a) modern time-series
-forecasting (Prophet, with its handling of changepoints and
-seasonality), (b) a dedicated anomaly classifier rather than a
-threshold rule on the forecast, (c) a language-model reasoning step
-grounded in retrieved domain content, and (d) an explicit governance
-layer that converts model outputs into auditable operational
-decisions. Each of these components has been deployed in isolation in
-production AIOps systems; their joint deployment, structured around
-the four-zone reference architecture and exposed through a coherent
-operator workflow, is the contribution.
+tools have offered linear extrapolation for decades, and the broader
+literature on online failure prediction is well-developed [10], [11].
+What is novel about the present work is the *integration* of (a) modern
+time-series forecasting (Prophet [1], with its handling of changepoints
+and seasonality), (b) a dedicated gradient-boosted anomaly classifier
+[2] rather than a threshold rule on the forecast, (c) a language-model
+reasoning step [6] grounded in retrieved domain content [5], and (d)
+an explicit governance layer that converts model outputs into auditable
+operational decisions. Each of these components has been deployed in
+isolation in production AIOps systems [9]; their joint deployment,
+structured around the four-zone reference architecture and exposed
+through a coherent operator workflow, is the contribution.
 
 A second observation is that this composition pattern generalizes to
 operations problems beyond disk management. The same architecture —
@@ -1027,6 +1036,118 @@ same pattern generalizes naturally to other IT-Operations domains.
 The complete source code, architecture diagrams, demonstration
 scripts, and reproduction instructions are available at the cited
 repository.
+
+---
+
+## Acknowledgments
+
+The author thanks Tata Consultancy Services for sponsoring the OpsGPT
+research program under which this work was developed, and the broader
+TCS Infrastructure Operations community for grounding insight on
+real-world disk-incident patterns. The author is also grateful to the
+open-source maintainers of Prophet, XGBoost, LangGraph, LangChain,
+sentence-transformers, pgvector, TimescaleDB, Redis, Streamlit, and
+Docker, whose work this implementation rests upon, and to Anthropic
+for the Claude API and SDK.
+
+---
+
+## References
+
+[1] S. J. Taylor and B. Letham, "Forecasting at scale," *The American
+Statistician*, vol. 72, no. 1, pp. 37–45, 2018. doi:
+[10.1080/00031305.2017.1380080](https://doi.org/10.1080/00031305.2017.1380080)
+
+[2] T. Chen and C. Guestrin, "XGBoost: A scalable tree boosting
+system," in *Proc. 22nd ACM SIGKDD Int. Conf. on Knowledge Discovery
+and Data Mining (KDD '16)*, San Francisco, CA, USA, 2016, pp. 785–794.
+doi: [10.1145/2939672.2939785](https://doi.org/10.1145/2939672.2939785)
+
+[3] N. Reimers and I. Gurevych, "Sentence-BERT: Sentence embeddings
+using Siamese BERT-networks," in *Proc. 2019 Conf. on Empirical
+Methods in Natural Language Processing and the 9th Int. Joint Conf.
+on Natural Language Processing (EMNLP-IJCNLP)*, Hong Kong, China, Nov.
+2019, pp. 3982–3992. doi:
+[10.18653/v1/D19-1410](https://doi.org/10.18653/v1/D19-1410)
+
+[4] Y. A. Malkov and D. A. Yashunin, "Efficient and robust approximate
+nearest neighbor search using Hierarchical Navigable Small World
+graphs," *IEEE Transactions on Pattern Analysis and Machine
+Intelligence*, vol. 42, no. 4, pp. 824–836, Apr. 2020. doi:
+[10.1109/TPAMI.2018.2889473](https://doi.org/10.1109/TPAMI.2018.2889473)
+
+[5] P. Lewis, E. Perez, A. Piktus, F. Petroni, V. Karpukhin, N. Goyal,
+H. Küttler, M. Lewis, W.-T. Yih, T. Rocktäschel, S. Riedel, and D.
+Kiela, "Retrieval-augmented generation for knowledge-intensive NLP
+tasks," in *Advances in Neural Information Processing Systems*, vol.
+33, 2020, pp. 9459–9474.
+
+[6] T. B. Brown, B. Mann, N. Ryder, M. Subbiah, J. Kaplan, P.
+Dhariwal, A. Neelakantan, et al., "Language models are few-shot
+learners," in *Advances in Neural Information Processing Systems*,
+vol. 33, 2020, pp. 1877–1901.
+
+[7] J. Wei, X. Wang, D. Schuurmans, M. Bosma, B. Ichter, F. Xia, E.
+Chi, Q. Le, and D. Zhou, "Chain-of-thought prompting elicits reasoning
+in large language models," in *Advances in Neural Information
+Processing Systems*, vol. 35, 2022, pp. 24824–24837.
+
+[8] S. Yao, J. Zhao, D. Yu, N. Du, I. Shafran, K. Narasimhan, and Y.
+Cao, "ReAct: Synergizing reasoning and acting in language models," in
+*Proc. 11th Int. Conf. on Learning Representations (ICLR)*, Kigali,
+Rwanda, May 2023.
+
+[9] P. Notaro, J. Cardoso, and M. Gerndt, "A survey of AIOps methods
+for failure management," *ACM Computing Surveys*, vol. 53, no. 3,
+Article 53, pp. 1–45, 2021. doi:
+[10.1145/3464743](https://doi.org/10.1145/3464743)
+
+[10] F. Salfner, M. Lenk, and M. Malek, "A survey of online failure
+prediction methods," *ACM Computing Surveys*, vol. 42, no. 3, Article
+10, pp. 1–42, 2010. doi:
+[10.1145/1670679.1670680](https://doi.org/10.1145/1670679.1670680)
+
+[11] Q. Lin, K. Hsieh, Y. Dang, H. Zhang, K. Sui, Y. Xu, J.-G. Lou,
+C. Li, Y. Wu, R. Yao, M. Chintalapati, and D. Zhang, "Predicting node
+failure in cloud service systems," in *Proc. 2018 26th ACM Joint
+Meeting on European Software Engineering Conf. and Symp. on the
+Foundations of Software Engineering (ESEC/FSE)*, Lake Buena Vista,
+FL, USA, 2018, pp. 480–490. doi:
+[10.1145/3236024.3236060](https://doi.org/10.1145/3236024.3236060)
+
+[12] B. Beyer, C. Jones, J. Petoff, and N. R. Murphy, *Site
+Reliability Engineering: How Google Runs Production Systems*.
+Sebastopol, CA, USA: O'Reilly Media, 2016.
+
+[13] A. Blázquez-García, A. Conde, U. Mori, and J. A. Lozano, "A review
+on outlier/anomaly detection in time series data," *ACM Computing
+Surveys*, vol. 54, no. 3, Article 56, pp. 1–33, 2021. doi:
+[10.1145/3444690](https://doi.org/10.1145/3444690)
+
+[14] Anthropic, "The Claude 3 Model Family: Opus, Sonnet, Haiku
+(Model Card)," 2024. [Online]. Available:
+https://www-cdn.anthropic.com/de8ba9b01c9ab7cbabf5c33b80b7bbc618857627/Model_Card_Claude_3.pdf
+
+[15] LangChain Inc., "LangGraph: Building stateful, multi-actor
+applications with large language models," 2024. [Online]. Available:
+https://langchain-ai.github.io/langgraph/
+
+[16] PostgreSQL Global Development Group, "PostgreSQL 17
+Documentation," 2024. [Online]. Available:
+https://www.postgresql.org/docs/17/
+
+[17] Timescale Inc., "TimescaleDB: An open-source time-series database
+on PostgreSQL," 2024. [Online]. Available: https://www.timescale.com/
+
+[18] pgvector Contributors, "pgvector: Open-source vector similarity
+search for PostgreSQL," 2024. [Online]. Available:
+https://github.com/pgvector/pgvector
+
+[19] Datadog, "Disk integration and host metrics," 2024. [Online].
+Available: https://docs.datadoghq.com/integrations/disk/
+
+[20] ServiceNow, "Now Platform — Incident Management," 2024.
+[Online]. Available: https://www.servicenow.com/products/itsm/incident-management.html
 
 ---
 
