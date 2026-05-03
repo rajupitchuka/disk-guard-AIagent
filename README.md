@@ -10,6 +10,8 @@ governance-gated auto-remediation. Built for the InnoVista 2026 demo.
 
 Regenerate with `python scripts/generate_architecture_diagram.py`.
 
+📄 **Full technical whitepaper:** [docs/disk-guard-whitepaper.md](docs/disk-guard-whitepaper.md) — 12-page deep dive on the architecture, the problem space, implementation details, validation, and production considerations.
+
 ## Status — Demo-ready
 
 | Component | Status |
