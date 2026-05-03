@@ -30,6 +30,8 @@ from ui.lib.data import fetch_agent_runs, invalidate_caches
 from ui.lib.styles import VERDICT_BADGES
 from services.remediation.executor import execute as remediation_execute
 from services.remediation.playbooks import get_playbook
+from services.servicenow_mock.client import create_ticket_from_run
+from shared.schemas import AgentRun
 
 st.set_page_config(page_title="OpsGPT", page_icon="🤖", layout="wide")
 
@@ -161,13 +163,37 @@ if prompt:
 
 # ---------------------------------------------------------------------------
 # Approve / Deny
+#
+# The Approve action depends on what the agent originally recommended:
+#   - escalate_anomaly  → approving the *escalation* → file a ServiceNow
+#                          ticket with the agent's reasoning. NEVER cleans.
+#   - clean / other     → approving the *cleanup* → run the playbook.
+#
+# This avoids the dangerous case where an operator clicks Approve on an
+# escalation recommendation and the system cleans files anyway, masking
+# the upstream incident the agent was trying to flag.
 # ---------------------------------------------------------------------------
 st.markdown("---")
 st.subheader("Resolve")
 
+# What did the original agent recommend?
+is_escalation = (run.get("verdict") == "escalated_anomaly")
+if is_escalation:
+    approve_label = "✅ Approve escalation (file ticket, no cleanup)"
+    approve_help = "Files a P2 ServiceNow ticket and routes to the application team. NO files will be deleted."
+else:
+    approve_label = "✅ Approve cleanup & remediate"
+    approve_help = "Runs the per-role cleanup playbook on the host."
+
+st.caption(
+    "💬 The chat input above is for asking Claude follow-up questions only — "
+    "it doesn't take any action. Use the buttons below to commit a decision."
+)
+
 a1, a2 = st.columns(2)
-approve = a1.button("✅ Approve & remediate", type="primary", use_container_width=True)
-deny = a2.button("❌ Deny (record as no-action)", use_container_width=True)
+approve = a1.button(approve_label, type="primary", use_container_width=True, help=approve_help)
+deny = a2.button("❌ Deny (record as no-action)", use_container_width=True,
+                 help="Records the operator's rejection. No remediation, no ticket.")
 
 
 def _record_resolution(parent_run, decision: str, verdict: str,
@@ -205,31 +231,77 @@ def _record_resolution(parent_run, decision: str, verdict: str,
 
 
 if approve:
-    # Look up the host to get role + monitored_path
+    # Look up the host metadata for both branches
     with timescale_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT role, monitored_path FROM hosts WHERE host_id = %s",
-                        (run["host_id"],))
+            cur.execute(
+                "SELECT host_id, role, monitored_path, environment FROM hosts WHERE host_id = %s",
+                (run["host_id"],),
+            )
             host_meta = cur.fetchone()
 
-    playbook = get_playbook(host_meta["role"])
-    with st.spinner(f"Remediating {run['host_id']}..."):
-        result = remediation_execute(
-            host_id=run["host_id"],
-            monitored_path=host_meta["monitored_path"],
-            playbook=playbook,
-            dry_run=False,
+    if is_escalation:
+        # Approve = file ticket. NEVER clean.
+        new_id = _record_resolution(
+            run, decision="ticket_only", verdict="escalated_anomaly",
+            reasoning=(
+                f"Operator approved escalation via OpsGPT chatbot "
+                f"(parent run {run['run_id']}). Filing P2 ticket per runbook; "
+                f"no cleanup performed because anomalous growth indicates an "
+                f"upstream incident."
+            ),
         )
-    new_id = _record_resolution(
-        run, decision="auto_remediate", verdict="cleaned",
-        bytes_freed=result.bytes_freed, files_deleted=result.file_count,
-        reasoning=f"Approved by operator via OpsGPT chatbot (parent run {run['run_id']}). "
-                  f"Freed {result.bytes_freed / (1024**3):.2f} GB across "
-                  f"{result.file_count} files.",
-    )
-    st.success(f"✅ Approved. New run {new_id} recorded. "
-               f"{result.file_count} files deleted, "
-               f"{result.bytes_freed / (1024**3):.2f} GB freed.")
+        # Build a minimal AgentRun for the ticket creator
+        from datetime import datetime, timezone
+        agent_run = AgentRun(
+            run_id=new_id,
+            started_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
+            host_id=run["host_id"],
+            prediction_id=run.get("prediction_id"),
+            confidence_score=run.get("confidence_score"),
+            decision="ticket_only",
+            verdict="escalated_anomaly",
+            llm_reasoning=run.get("llm_reasoning"),
+        )
+        try:
+            ticket = create_ticket_from_run(
+                agent_run=agent_run,
+                host_metadata=host_meta,
+                prediction=None,
+            )
+            st.success(
+                f"✅ Escalation approved. Ticket **{ticket.ticket_id}** "
+                f"({ticket.severity}) filed to **{ticket.assignment_group}**. "
+                f"No files were deleted."
+            )
+            st.page_link("pages/4_📨_Tickets.py", label="📨 Open the ticket →")
+        except Exception as e:  # noqa: BLE001
+            st.error(f"Approved, but ticket creation failed: {e}")
+    else:
+        # Approve = run the cleanup playbook
+        playbook = get_playbook(host_meta["role"])
+        with st.spinner(f"Remediating {run['host_id']}..."):
+            result = remediation_execute(
+                host_id=run["host_id"],
+                monitored_path=host_meta["monitored_path"],
+                playbook=playbook,
+                dry_run=False,
+            )
+        new_id = _record_resolution(
+            run, decision="auto_remediate", verdict="cleaned",
+            bytes_freed=result.bytes_freed, files_deleted=result.file_count,
+            reasoning=(
+                f"Operator approved cleanup via OpsGPT chatbot "
+                f"(parent run {run['run_id']}). Freed "
+                f"{result.bytes_freed / (1024**3):.2f} GB across "
+                f"{result.file_count} files."
+            ),
+        )
+        st.success(
+            f"✅ Cleanup approved. {result.file_count} files deleted, "
+            f"{result.bytes_freed / (1024**3):.2f} GB freed."
+        )
     invalidate_caches()
     st.rerun()
 
