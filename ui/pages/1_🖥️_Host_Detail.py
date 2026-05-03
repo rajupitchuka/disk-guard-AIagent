@@ -44,7 +44,7 @@ from ui.lib.data import (
     fetch_latest_predictions,
     invalidate_caches,
 )
-from ui.lib.styles import DECISION_COLORS, STATUS_COLORS
+from ui.lib.styles import DECISION_COLORS, STATUS_COLORS, action_summary as _action_summary
 
 st.set_page_config(page_title="OpsGPT — Host Detail", page_icon="🖥️", layout="wide")
 
@@ -314,23 +314,35 @@ if resolved_done:
     st.markdown(
         f"<div style='background:{color};color:white;padding:10px 16px;"
         f"border-radius:8px;display:inline-block;font-weight:600;margin-top:4px;'>"
-        f"Action: {decision}</div>",
+        f"Decision route: {decision}</div>",
         unsafe_allow_html=True,
     )
+
+    # Look up the just-written audit row for the verdict + ticket_id (the
+    # resolve action returns minimal info; richer detail is in agent_runs).
+    latest_run = fetch_agent_runs(host_id=selected, limit=1)
+    verdict = ticket_id = None
+    if not latest_run.empty:
+        verdict = latest_run.iloc[0].get("verdict")
+        ticket_id = latest_run.iloc[0].get("servicenow_ticket_id")
+
+    summary = _action_summary(
+        decision=decision, verdict=verdict,
+        files=files, gb_freed=gb_freed, ticket_id=ticket_id,
+    )
+    box = st.success if files else (
+        st.warning if decision == "opsgpt_chat" else st.info
+    )
+    box(summary)
+
+    # Direct nav to wherever the operator should look next
     if files:
-        st.success(f"🧹 Cleaned {files} files · {gb_freed:.2f} GB freed")
         st.page_link("pages/3_📋_Audit_Trail.py", label="📋 View this run in the Audit Trail →")
     elif decision == "opsgpt_chat":
-        st.warning(
-            "📨 Routed to OpsGPT chat — pending operator approval. Open the "
-            "chatbot, ask follow-up questions if you want, then approve or deny."
-        )
         st.page_link("pages/2_🤖_OpsGPT.py", label="🤖 Open OpsGPT chat →")
-    elif decision == "ticket_only":
-        st.info("📨 ServiceNow ticket created — see Tickets page.")
-        st.page_link("pages/4_📨_Tickets.py", label="📨 Open Tickets →")
+    elif ticket_id:
+        st.page_link("pages/4_📨_Tickets.py", label=f"📨 Open ticket {ticket_id} →")
     else:
-        st.info("No action taken (escalation path or no safe candidates).")
         st.page_link("pages/3_📋_Audit_Trail.py", label="📋 View this run in the Audit Trail →")
 
 
@@ -419,4 +431,52 @@ else:
     ]].copy()
     table["bytes_freed_gb"] = (table["bytes_freed"] / (1024**3)).round(2)
     table = table.drop(columns=["bytes_freed"])
-    st.dataframe(table, use_container_width=True, hide_index=True)
+    st.dataframe(
+        table,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "decision": st.column_config.TextColumn(
+                "decision",
+                help=(
+                    "Governance route — who is allowed to act. "
+                    "auto_remediate = system acts on its own (action depends on LLM "
+                    "rec — clean OR escalate). opsgpt_chat = human approves via "
+                    "chatbot. ticket_only = file ticket, no other action."
+                ),
+            ),
+            "verdict": st.column_config.TextColumn(
+                "verdict",
+                help=(
+                    "Outcome — what was actually done. cleaned = files deleted. "
+                    "escalated_anomaly = ticket filed, NO cleanup (LLM flagged "
+                    "anomalous growth). no_action_needed = nothing to do."
+                ),
+            ),
+            "confidence_score": st.column_config.NumberColumn(
+                "confidence_score",
+                format="%.3f",
+                help=(
+                    "Decision Engine score (0–1). ≥ 0.85 routes to auto_remediate, "
+                    "≥ 0.75 routes to opsgpt_chat, < 0.75 routes to ticket_only."
+                ),
+            ),
+            "servicenow_ticket_id": st.column_config.TextColumn(
+                "ticket_id",
+                help="ServiceNow ticket auto-created on escalations / ticket-only routes.",
+            ),
+        },
+    )
+
+    # Plain-language summary of the most-recent run, since columns alone don't
+    # tell the full story (decision=auto_remediate + verdict=escalated_anomaly
+    # confuses people who expect 'auto remediate' to mean 'delete files').
+    latest = runs.iloc[0]
+    summary = _action_summary(
+        decision=latest.get("decision"),
+        verdict=latest.get("verdict"),
+        files=int(latest.get("files_deleted") or 0),
+        gb_freed=float((latest.get("bytes_freed") or 0) / (1024**3)),
+        ticket_id=latest.get("servicenow_ticket_id"),
+    )
+    st.info(f"**Most recent action:** {summary}")

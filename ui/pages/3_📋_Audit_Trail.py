@@ -17,7 +17,7 @@ import pandas as pd
 import streamlit as st
 
 from ui.lib.data import fetch_agent_runs, invalidate_caches
-from ui.lib.styles import DECISION_COLORS, VERDICT_BADGES
+from ui.lib.styles import DECISION_COLORS, VERDICT_BADGES, action_summary
 
 st.set_page_config(page_title="OpsGPT — Audit", page_icon="📋", layout="wide")
 
@@ -106,6 +106,18 @@ for _, run in filtered.iterrows():
     )
 
     with st.expander(header, expanded=False):
+        # Plain-language summary first — disambiguates auto_remediate +
+        # escalated_anomaly (system auto-acted but by filing a ticket, not
+        # by deleting files).
+        summary = action_summary(
+            decision=decision if decision != "—" else None,
+            verdict=verdict if verdict != "—" else None,
+            files=int(files),
+            gb_freed=gb_freed,
+            ticket_id=ticket_id,
+        )
+        st.markdown(f"**Action taken:** {summary}")
+
         c1, c2 = st.columns([2, 1])
         with c1:
             st.markdown("**LLM reasoning**")
