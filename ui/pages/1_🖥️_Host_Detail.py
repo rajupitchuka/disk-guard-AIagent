@@ -299,12 +299,19 @@ if resolved_done:
     )
     if files:
         st.success(f"🧹 Cleaned {files} files · {gb_freed:.2f} GB freed")
+        st.page_link("pages/3_📋_Audit_Trail.py", label="📋 View this run in the Audit Trail →")
     elif decision == "agentask":
-        st.warning("📨 Routed to OpsGPT chat — go to the chatbot page to approve / deny.")
+        st.warning(
+            "📨 Routed to OpsGPT chat — pending operator approval. Open the "
+            "chatbot, ask follow-up questions if you want, then approve or deny."
+        )
+        st.page_link("pages/2_🤖_OpsGPT.py", label="🤖 Open OpsGPT chat →")
     elif decision == "ticket_only":
         st.info("📨 ServiceNow ticket created — see Tickets page.")
+        st.page_link("pages/4_📨_Tickets.py", label="📨 Open Tickets →")
     else:
         st.info("No action taken (escalation path or no safe candidates).")
+        st.page_link("pages/3_📋_Audit_Trail.py", label="📋 View this run in the Audit Trail →")
 
 
 # ---------------------------------------------------------------------------
