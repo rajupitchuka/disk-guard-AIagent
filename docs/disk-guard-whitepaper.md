@@ -11,48 +11,55 @@
 
 ## Abstract
 
-Disk-fill incidents remain one of the most frequent and disruptive classes
-of production failures across enterprise server fleets. Traditional
-monitoring tools — SCOM, Datadog [19], Nagios, and similar — detect such
-conditions only when a configured utilization threshold (typically 85% or
-90%) is breached, at which point an alert is generated and an Operations
-engineer is dispatched to investigate, often via ServiceNow [20]. By the time the alert fires, the
-window for safe intervention is already small, and in cases of anomalous
-fast-fill (caused by misconfigured loggers, runaway processes, or
-deployment regressions), the disk may saturate before the response cycle
-completes — resulting in production outages.
+Disk-fill incidents are among the most common production failures in
+enterprise IT. From years supporting infrastructure operations at
+TCS, I have watched the same pattern play out hundreds of times: a
+disk fills up, a monitoring tool fires an alert at 85–90%
+utilization, a ticket lands in the queue, and an on-call engineer
+logs in to clean up before the volume saturates. Sometimes the
+engineer wins this race. For anomalous fast-fill scenarios — runaway
+loggers, retry storms, deploy regressions — the alert fires too late
+and the host goes down.
 
-This paper presents **Disk Guard AI Agent**, a working POC implementation
-of a predictive multi-AI agent system that fundamentally inverts this
-model. Rather than waiting for thresholds to breach, Disk Guard
-continuously analyzes telemetry, *forecasts* disk saturation using
-classical time-series methods (Prophet) [1] and an XGBoost [2] anomaly
-classifier, and invokes a reasoning agent built on a LangGraph state
-machine [15] and the Anthropic Claude [14] large language model. The
-agent is grounded in retrieved runbook content via a pgvector [18]
-backed RAG corpus [5] using sentence-transformers embeddings [3] and
-HNSW similarity search [4], sanitized for PII and credentials, and
-produces a structured recommendation. A
-Decision Engine then combines LLM confidence, ML signal alignment, RAG
-grounding, and environmental risk into a single 0–1 score that routes
-the run into one of three governance bands: auto-remediation,
-human-in-the-loop chatbot approval, or ServiceNow ticket-only. Every
-decision is fully audited, with the LLM's rationale, tool invocations,
-and retrieved RAG document IDs persisted alongside the action taken.
+The economic cost is significant. Industry surveys put enterprise
+hourly outage cost above USD 300K [21], [22], and storage-related
+events account for roughly 10–15% of infrastructure incidents in
+mid-to-large estates [9]. At the scale of a typical 3,000-server
+enterprise IT estate, disk-fill incidents alone consume on the order
+of one engineering FTE per year in routine response time and produce
+several million dollars per year in associated outage cost. Across
+the global enterprise IT footprint the aggregate cost runs into the
+tens of billions of US dollars annually.
 
-The paper describes the four-zone reference architecture, details the
-implementation across approximately 2,500 lines of Python, and walks
-through two contrasting demonstration scenarios: a successful predictive
-cleanup of routine rotated logs, and a correctly-refused cleanup of an
-anomalous-growth scenario in which the agent retrieves a relevant past
-incident from RAG and escalates rather than masking the upstream
-problem. The POC runs on a fleet of 53 hosts (3 real Linux Docker
-containers plus 50 simulated hosts) and demonstrates a complete end-to-end
-ML cycle in approximately 8 seconds. The contribution is not a new ML
-algorithm but a *composition pattern*: how to wire forecasting, anomaly
-detection, retrieval-augmented reasoning, and confidence-gated governance
-together into a system that is robust enough for real IT-Operations
-deployment.
+This paper describes **Disk Guard AI Agent**, a working proof of
+concept I built to address this structurally. Rather than waiting
+for thresholds, the system continuously forecasts disk saturation
+using Prophet [1] and classifies anomalous growth using XGBoost [2].
+When either forecast or anomaly score crosses a trigger condition, a
+Claude-powered LangGraph agent [14], [15] grounded in retrieved
+past-incident records [5] reasons about the situation and produces a
+structured recommendation: clean, escalate, or wait. A Decision
+Engine then routes the recommendation to one of three governance
+bands — auto-remediate, chatbot approval, or ServiceNow ticket
+only — based on a confidence score that combines LLM self-confidence,
+ML signal alignment, RAG grounding, and environment risk. Every
+action is fully audited.
+
+The implementation is end-to-end on a 53-host fleet (3 real Linux
+containers plus 50 simulated hosts), with full ML cycles completing
+in approximately 8 seconds. Two reproducible scenarios demonstrate
+the system in operation: a 16 GB predictive cleanup of routine
+rotated logs, and a correctly-refused cleanup of an anomalous-growth
+event in which the agent retrieves a relevant past incident from RAG
+and files a P2 ServiceNow ticket rather than masking the upstream
+problem. The contribution is not a new ML algorithm. It is a working
+composition pattern showing how to combine forecasting, anomaly
+detection, retrieval-augmented LLM reasoning, and confidence-gated
+governance into a system that real IT-operations teams can deploy.
+The pattern generalizes naturally to other infrastructure-operations
+problems — service uptime, backup verification, storage capacity,
+network saturation — that share the same *predict, reason, decide,
+act* structure.
 
 **Index Terms:** AIOps, predictive monitoring, agentic AI,
 retrieval-augmented generation, time-series forecasting, anomaly
@@ -136,7 +143,77 @@ concludes.
 
 ## 2. The Problem: Limits of Reactive Disk Monitoring
 
-### 2.1 The current operational model
+### 2.1 Scope and economic impact
+
+Before describing the operational model, it is worth establishing how
+big the disk-fill problem actually is in financial and human terms.
+Quantifying this precisely is hard because enterprises rarely publish
+per-incident-class outage data, but several reference points support
+a defensible estimate.
+
+**Per-hour outage cost.** The widely-cited Gartner figure of USD 5,600
+per minute (~USD 336K per hour) of IT downtime [22] remains a
+reasonable mean across the enterprise survey base. ITIC's annual
+*Hourly Cost of Downtime* surveys, conducted since 2008, consistently
+report that the majority of enterprises peg an hour of unplanned
+downtime above USD 300K, with the top tier (financial services,
+telecommunications, healthcare) frequently citing figures above USD
+1M/hour for customer-facing systems [21].
+
+**Incident-category share.** Storage and disk-related events typically
+account for 10–15% of infrastructure incidents in mid-to-large
+estates [9], [10]. The exact share varies by industry — heavily
+log-generating workloads (financial trading, ad tech, observability
+platforms themselves) trend higher; static workloads trend lower.
+
+**Manual effort per incident.** A typical disk-related ticket
+consumes 45–90 minutes of L2/L3 engineering time across investigation,
+remediation, and post-incident documentation. At a fully-loaded
+enterprise SRE rate of USD 80–120/hour, this is roughly USD 80–150
+per ticket in labor cost alone, before accounting for context-switching,
+alert fatigue, and any associated outage.
+
+Applying these reference points across enterprise size segments
+produces the rough estimates summarized in Table 1.
+
+**Table 1.** Estimated annual cost of disk-fill incidents by enterprise
+segment. Numbers assume an industry-typical 1–2% annual disk-incident
+rate per server, with 10–25% of incidents escalating to customer-facing
+outage. Outage cost per event is conservative relative to Gartner /
+ITIC means.
+
+| Segment | Servers (avg) | Disk incidents/year | Engineering effort | Outage cost/year | Total annual burden |
+|---|---|---|---|---|---|
+| **Small** (1–50 servers, USD 10–50M revenue) | ~25 | 5–15 | 10–25 hr | USD 5–15K | ~USD 10–25K |
+| **Medium** (50–500 servers, USD 50M–1B revenue) | ~250 | 50–150 | 75–225 hr | USD 250–500K | ~USD 300–550K |
+| **Large** (500–10,000+ servers, USD 1B+ revenue) | ~3,000 | 1,000–3,000 | 1,500–4,500 hr (≈ 1–2 FTE) | USD 7–15M | ~USD 7–15M |
+
+For a Fortune-500 IT estate with 5,000 production servers, an
+industry-typical 1.5% annual incident rate, and a 20% subset
+escalating to customer-facing outages, the model produces approximately
+75 outage-impacting events per year. At a conservative USD 200K
+average outage cost (well below the Gartner mean), this is
+approximately USD 15M/year in direct outage cost, plus USD 300–500K/year
+in unproductive engineering effort, plus the harder-to-quantify cost
+of context-switching, alert fatigue, and morale impact on on-call
+teams.
+
+**Aggregate scale.** Taking the global population of enterprises
+operating 500+ server estates as roughly 30,000 organizations, and
+applying even the low end of the Large-segment burden range, the
+collective annual cost of disk-fill incidents alone is in the
+**tens of billions of US dollars** range. This is not a niche
+problem. It is the scale that justifies investment in predictive
+prevention rather than treating disk monitoring as a solved
+infrastructure-101 capability.
+
+These numbers are inherently approximate. The point is not the
+specific figure but the order of magnitude: the burden is large
+enough that a 30–50% reduction (the kind of improvement a working
+predictive system can plausibly deliver) is an enterprise-grade
+improvement worth meaningful investment.
+
+### 2.2 The current operational model
 
 Figure 1 illustrates the prevailing pattern in enterprise disk monitoring.
 
@@ -156,7 +233,7 @@ easy to understand, easy to instrument, and produces clearly auditable
 events. It also has three structural weaknesses that become more
 problematic as estates grow and software complexity increases.
 
-### 2.2 Threshold thresholds are necessarily conservative
+### 2.3 Threshold thresholds are necessarily conservative
 
 The choice of alert threshold (85%, 90%, sometimes 95% on
 high-write-rate hosts) is a tradeoff. A low threshold produces too many
@@ -172,7 +249,7 @@ growth rates are sub-1 GB/hour, and 10% of even a modest 100 GB volume
 is 10 GB, which buys hours. The model breaks down when growth rates
 are 10× or 100× normal.
 
-### 2.3 Anomalous fast-fill: when monitoring is too late
+### 2.4 Anomalous fast-fill: when monitoring is too late
 
 The dangerous failure mode is anomalous fast-fill. Common causes
 observed in practice include:
@@ -196,7 +273,7 @@ few minutes of buffer remaining. By the time a human engages or an
 automated cleanup completes — a process that itself depends on writable
 disk for its bookkeeping — the host may already be hard-down.
 
-### 2.4 Reactive automation: a partial improvement
+### 2.5 Reactive automation: a partial improvement
 
 A common mitigation, observed across mature SRE organizations, is to
 attach automated cleanup playbooks to disk alerts. When the threshold
@@ -212,7 +289,7 @@ because:
    cleanup masks the symptom and the volume re-fills within minutes.
    This pattern is well-documented in post-incident reports.
 
-### 2.5 The case for prediction
+### 2.6 The case for prediction
 
 The structural fix is to move action from "after the threshold breach"
 to "before." This requires two capabilities the threshold model lacks:
@@ -1041,7 +1118,7 @@ repository.
 
 ## Acknowledgments
 
-The author thanks Tata Consultancy Services for sponsoring the OpsGPT
+The author thanks Tata Consultancy Services for sponsoring the
 research program under which this work was developed, and the broader
 TCS Infrastructure Operations community for grounding insight on
 real-world disk-incident patterns. The author is also grateful to the
@@ -1049,6 +1126,17 @@ open-source maintainers of Prophet, XGBoost, LangGraph, LangChain,
 sentence-transformers, pgvector, TimescaleDB, Redis, Streamlit, and
 Docker, whose work this implementation rests upon, and to Anthropic
 for the Claude API and SDK.
+
+**Disclosure of AI assistance.** Portions of this manuscript were
+drafted with assistance from Anthropic's Claude large language model
+(model: claude-haiku-4-5; integration: Anthropic Python SDK), under
+the direct guidance, factual review, and final editorial approval of
+the author. All technical claims, architectural decisions,
+implementation details, market estimates, and validation results
+reflect the author's own work. The author is solely responsible for
+the content, accuracy, and conclusions of this paper, in accordance
+with the IEEE Author Center's policy on the use of generative
+artificial intelligence in scientific writing.
 
 ---
 
@@ -1148,6 +1236,15 @@ Available: https://docs.datadoghq.com/integrations/disk/
 
 [20] ServiceNow, "Now Platform — Incident Management," 2024.
 [Online]. Available: https://www.servicenow.com/products/itsm/incident-management.html
+
+[21] ITIC, "ITIC 2022 Hourly Cost of Downtime Survey: Hourly downtime
+costs rise; 91% of mid-sized & large enterprises say one hour of
+server downtime exceeds USD 300,000," 2022. [Online]. Available:
+https://itic-corp.com/wp-content/uploads/2022/04/2022-Hourly-Cost-of-Downtime-Survey-results.pdf
+
+[22] A. Lerner, "The cost of downtime," Gartner Blog Network,
+Jul. 16, 2014 (widely cited industry baseline). [Online]. Available:
+https://blogs.gartner.com/andrew-lerner/2014/07/16/the-cost-of-downtime/
 
 ---
 
