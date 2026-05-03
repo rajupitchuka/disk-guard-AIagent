@@ -70,39 +70,50 @@ reliability engineering
 
 ## 1. Introduction
 
-Storage exhaustion incidents account for a non-trivial fraction of
-production outages across virtually every enterprise IT estate. The
-broader operational discipline of preventing such failures has been
-formalized as Site Reliability Engineering [12], and the application of
-machine learning to operational failure prediction is the subject of an
-active body of research [9], [10], [11]. A common
-incident pattern is the following: a host's monitored partition (e.g.,
-`/var/log` on a Linux web server, or `C:\Logs` on a Windows IIS server)
-fills steadily over hours or days. At some point the host's free space
-falls below a configured threshold — most commonly 85% or 90%
-utilization — at which point a monitoring agent emits an event. The
-event is consumed by a centralized observability platform, an incident
-ticket is opened, and an On-Call engineer is paged or, in
-better-instrumented teams, an automated cleanup runbook is triggered.
+Storage exhaustion is one of the more boring categories of production
+failure. It is also one of the most common. In the years I have spent
+supporting infrastructure operations for enterprise customers,
+disk-fill incidents have been a constant background hum in the on-call
+rotation. The broader discipline of preventing operational failure has
+been formalized in the Site Reliability Engineering literature [12],
+and a fairly active research community has applied machine learning to
+the problem of failure prediction in cloud and enterprise systems [9],
+[10], [11]. Despite this, the dominant practical approach in industry
+remains threshold-based reactive monitoring — and disk-fill incidents
+keep happening.
 
-The model is reactive by design. Action depends on a threshold breach,
-the threshold is necessarily conservative (because false alarms are
-costly), and the response cycle includes human or automation latency.
-For routine log accumulation this is acceptable; for anomalous growth
-patterns it is dangerous. A misconfigured logger, an exception storm
-caused by a deploy regression, or an unbounded retry loop can fill a
-volume in minutes rather than days, in which case the system never
-reaches the alert threshold gradually — it leaps over it and the disk
-saturates before any responder can react.
+The pattern repeats almost without variation. A host's monitored
+partition (typically `/var/log` on a Linux web or app server, or
+`C:\Logs` on a Windows IIS server) fills steadily over hours or days.
+Free space crosses a configured threshold, most often 85% or 90%
+utilization, and the monitoring agent emits an event. The event lands
+in a centralized observability platform, an incident ticket is opened,
+and someone — either an on-call engineer or, in better-instrumented
+teams, an automated runbook — is dispatched to investigate.
+
+This is reactive by design. Action only begins after a threshold
+breach. The threshold has to be conservative or the team drowns in
+false alarms. The response cycle includes human or automation
+latency. For routine log accumulation it works well enough. For the
+anomalous cases — a misconfigured logger left enabled in production,
+an unbounded retry loop, an exception storm triggered by a bad deploy —
+it does not. In those cases the disk does not fill gradually. It
+fills in minutes, leaps over the threshold rather than crossing it
+slowly, and saturates before any responder can react. The result is a
+production outage that everyone agrees, after the fact, was
+preventable.
 
 This paper introduces **Disk Guard AI Agent**: a predictive,
-multi-AI-component system that monitors continuously, forecasts trajectory
-in real time, reasons about whether observed growth is normal or
-anomalous, and acts under explicit governance guardrails *before* the
-disk reaches a state requiring emergency intervention. The system is
-implemented end-to-end and validated on a fleet of 53 hosts. The full
-source code and reproduction artifacts are publicly available at the
-repository cited above.
+multi-AI-component system that monitors continuously, forecasts the
+trajectory in real time, reasons about whether observed growth is
+normal or anomalous, and acts under explicit governance guardrails
+*before* the disk reaches a state requiring emergency intervention.
+The system is implemented end-to-end as a working proof of concept
+and validated on a fleet of 53 hosts. The full source code,
+architecture diagrams, and reproduction scripts are publicly available
+at the repository cited above. I built this because I have lived the
+problem; the paper is a deliberate attempt to share the solution
+pattern in a form other practitioners can pick up, run, and adapt.
 
 ### 1.1 Contributions
 
@@ -1084,35 +1095,51 @@ Several directions are immediately tractable:
 
 ## 10. Conclusion
 
-Disk-fill incidents are a well-understood class of failure with
-well-understood operational impact. The dominant mitigation today —
-threshold-based monitoring with reactive cleanup — addresses routine
-cases adequately but fails at exactly the moments when reliable
-intervention matters most: the anomalous fast-fill cases driven by
-deploy regressions and runaway processes. The structural fix is to
-move action from threshold-breach to trajectory-prediction.
+Disk-fill is a well-understood failure class with well-understood
+operational cost. The dominant mitigation today — threshold-based
+monitoring with reactive cleanup — handles routine cases reasonably
+well and fails badly at exactly the moments when getting it right
+matters most: the anomalous fast-fill cases driven by deploy
+regressions and runaway processes. The structural fix is simple to
+state: stop waiting for the threshold breach. Watch the trajectory
+instead. Act before the disk is in trouble, not after.
 
-This paper has presented Disk Guard AI Agent, a working POC that
-implements that fix end-to-end. The system continuously forecasts
+That is what I set out to build with Disk Guard AI Agent, and that is
+what this paper has described. The system continuously forecasts
 disk-fill trajectories using Prophet, classifies anomalous growth
-patterns with XGBoost, reasons about appropriate action with a
-Claude-powered LangGraph agent grounded in retrieved runbook content,
-and routes the resulting recommendation through an explicit
-confidence-scored governance layer to one of three destinations —
-auto-remediation, human-in-the-loop chatbot approval, or ServiceNow
-ticket only. Every action is fully audited.
+patterns with XGBoost, and asks a Claude-powered LangGraph agent —
+grounded in retrieved runbook and past-incident content — to reason
+about what to do. The resulting recommendation is then scored and
+routed by an explicit governance layer: auto-remediate when the
+system is confident enough to act on its own, route to the operator
+chatbot when human judgment is the safer call, or simply file a
+ticket when the signal is too weak to warrant either. Every step is
+auditable. Every action has a reason attached.
 
-The system is operational. On a 53-host POC fleet it produces correct,
-explainable decisions in seconds, distinguishes routine cleanup
-opportunities from anomalous-growth incidents, and refuses to mask
-upstream problems with cosmetic remediation. The contribution is a
-working composition pattern: how to wire forecasting, anomaly detection,
-LLM reasoning, retrieval, and governance into a deployable system. The
-same pattern generalizes naturally to other IT-Operations domains.
+The system works. On the 53-host POC fleet it produces correct,
+explainable decisions in seconds rather than minutes. It tells
+routine cleanup opportunities apart from anomalous-growth incidents.
+When the LLM recommends escalation rather than cleanup — which it
+does whenever the past-incident corpus suggests cleanup would mask an
+upstream problem — the executor correctly refuses to delete files
+and a P2 ticket is filed instead. That last behavior is the one I am
+most pleased with, because it is exactly the failure mode that the
+threshold-based reactive systems get wrong.
+
+The contribution is not a new algorithm. It is a working composition
+pattern: how to combine forecasting, anomaly detection, LLM
+reasoning, retrieval, and governance into a system that can be
+deployed in real IT-operations environments without giving up either
+safety or transparency. Disk is the first instance. The same pattern
+applies directly to service uptime, backup verification, storage
+capacity, and network bandwidth — anywhere the structure of *predict
+the trajectory, reason about it, decide carefully, then act* is the
+right way to organize the response.
 
 The complete source code, architecture diagrams, demonstration
-scripts, and reproduction instructions are available at the cited
-repository.
+scripts, and reproduction instructions are at the repository cited
+above. I welcome feedback, contributions, and replication on real
+production telemetry from anyone working on similar problems.
 
 ---
 
