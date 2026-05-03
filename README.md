@@ -4,31 +4,11 @@ Implementation of the OpsGPT reference architecture: predictive disk-fill
 detection across ~3000 servers using ML, with LLM-driven reasoning and
 governance-gated auto-remediation. Built for the InnoVista 2026 demo.
 
-## Architecture (the diagram)
+## Architecture
 
-```
-                         ┌──────────────── Zone 1 — Data ─────────────────┐
-   Datadog (synthetic) → │ Ingestion (APScheduler) → TimescaleDB (30d)    │
-                         │                              ↓                  │
-                         │                          ML Engine              │
-                         │                       (Prophet + XGBoost)       │
-                         └──────────────────────────┬─────────────────────┘
-                                                    │ if forecast ≥90% in ≤7d
-                         ┌──────────── Zone 2 — AI Agent ────────────────┐
-                         │ LLM Agent (Claude + LangGraph + RAG)          │
-                         │ Data Sanitizer | MCP Gateway                  │
-                         └──────────────────────────┬────────────────────┘
-                                                    │
-                         ┌────────── Zone 3 — Governance ────────────────┐
-                         │ Decision Engine → confidence score             │
-                         │   > 0.85 → Remediation (PowerShell / SSH)      │
-                         │   0.75–0.85 → OpsGPT chatbot (approval)        │
-                         │   < 0.75 → ServiceNow ticket only              │
-                         └────────────────────────────────────────────────┘
-                         ┌────────── Zone 4 — Infra ─────────────────────┐
-                         │ pgvector (RAG corpus)   |   Redis (state)     │
-                         └────────────────────────────────────────────────┘
-```
+![Disk Guard AI Agent — Architecture](assets/architecture.png)
+
+Regenerate with `python scripts/generate_architecture_diagram.py`.
 
 ## Status — Demo-ready
 
