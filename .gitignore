@@ -33,6 +33,10 @@ logs/
 .DS_Store
 Thumbs.db
 
+# MS Word lock files (created when .docx is open)
+~$*.docx
+~$*.doc
+
 # Editors
 .vscode/
 .idea/
