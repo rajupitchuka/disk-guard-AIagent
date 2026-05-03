@@ -192,6 +192,26 @@ if has_prediction:
     p4.metric("Hours to 90%", f"{my_pred['hours_to_90pct']:.1f}" if pd.notna(my_pred['hours_to_90pct']) else "n/a")
     p5.metric("Triggered?", "✅ YES" if my_pred['triggered_agent'] else "—",
               help="True if forecast crosses 90% within 7d OR anomaly score >= 0.6")
+
+    # Visible "freshness" line so each Run ML click is obvious even when
+    # numbers stabilize on unchanged data.
+    pred_ts = pd.to_datetime(my_pred["ts"], utc=True)
+    age_sec = max(0, int((pd.Timestamp.now(tz="UTC") - pred_ts).total_seconds()))
+    if age_sec < 60:
+        age_str = f"{age_sec}s ago"
+    elif age_sec < 3600:
+        age_str = f"{age_sec // 60}m {age_sec % 60}s ago"
+    else:
+        age_str = f"{age_sec // 3600}h {(age_sec % 3600) // 60}m ago"
+    fresh_color = "#10b981" if age_sec < 60 else "#6b7280"
+    st.markdown(
+        f"<div style='font-size:0.85em; color:{fresh_color}; margin-top:6px;'>"
+        f"🕒 Last predicted at <code>{pred_ts.strftime('%H:%M:%S UTC')}</code> · "
+        f"<strong>{age_str}</strong> · "
+        f"prediction_id <code>{my_pred['prediction_id']}</code>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 else:
     st.info("No ML prediction yet for this host — click **Run ML Prediction** below.")
 
